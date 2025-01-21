@@ -19,7 +19,6 @@ class PlayingPieceX(PlayingPiece):
   def __str__(self):
     return "X"
 
-
 class PlayingPieceO(PlayingPiece):
   def __init__(self):
     super().__init__(PieceType.O)
@@ -53,13 +52,11 @@ class Board:
     for r in range(self.size):
       for c in range(self.size):
         if self.board[r][c]:
-
           print("   " + str(self.board[r][c]) + "  ", end = "")
         else:
           print("      ", end = "")
         print(" | ", end="")
       print()
-
 
 class Game:
 

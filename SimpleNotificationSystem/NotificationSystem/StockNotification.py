@@ -85,5 +85,6 @@ iphone_observable.add(email_notification2)
 iphone_observable.add(phone_notification1)
 
 iphone_observable.setStockCount(5)
+iphone_observable.setStockCount(10)
 
 
