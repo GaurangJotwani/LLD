@@ -1,11 +1,5 @@
 from abc import ABC, abstractmethod
 
-
-class NotificationAlertObserver(ABC):
-    @abstractmethod
-    def update(self):
-        pass
-
 class StocksObservable(ABC):
     @abstractmethod
     def add(self, observer: NotificationAlertObserver):
@@ -23,8 +17,12 @@ class StocksObservable(ABC):
     def getStockCount(self):
         pass
 
+class NotificationAlertObserver(ABC):
+    @abstractmethod
+    def update(self):
+        pass
+
 class EmailNotificationObserver(NotificationAlertObserver):
-    
     def __init__(self, email: str, observable: StocksObservable):
         self.email = email
         self.observable  = observable
@@ -46,7 +44,6 @@ class PhoneNotificationObserver(NotificationAlertObserver):
 
     def sendSMS(self, stock):
         print(f"Sending SMS to {self.phone}. Current Stock: {stock}")
-
 
 class IphoneObervableImpl(StocksObservable):
     def __init__(self):
@@ -73,7 +70,6 @@ class IphoneObervableImpl(StocksObservable):
     def getStockCount(self):
         return self.stock
 
-
 iphone_observable = IphoneObervableImpl()
 
 email_notification1 = EmailNotificationObserver("gaurangjotwani@gmail.com", iphone_observable)
@@ -86,5 +82,3 @@ iphone_observable.add(phone_notification1)
 
 iphone_observable.setStockCount(5)
 iphone_observable.setStockCount(10)
-
-
