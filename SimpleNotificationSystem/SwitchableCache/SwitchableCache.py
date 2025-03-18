@@ -2,131 +2,132 @@ import time
 from collections import OrderedDict
 from abc import ABC, abstractmethod
 
-# EvictionPolicy interface (Strategy pattern)
-class EvictionPolicy(ABC):
+
+class CacheStrategy(ABC):
     @abstractmethod
-    def put(self, cache, key, value, size):
+    def put(self, cache, key, value, ttl = None):
         pass
+    
     @abstractmethod
     def get(self, cache, key):
         pass
+    
     @abstractmethod
     def evict(self, cache):
         pass
 
-# Time-based eviction policy
-class TimeBasedEvictionPolicy(EvictionPolicy):
-    def __init__(self, ttl_seconds=300):  # Default TTL is 5 minutes (300 sec)
-        self.ttl_seconds = ttl_seconds
+class Cache:
+    def __init__(self, cache_strategy):
+        self.cache_strategy = cache_strategy
+        self.store = OrderedDict()
+    
+    def put(self, key, value, ttl = None):
+        self.cache_strategy.put(self, key, value, ttl)
+    
+    def get(self, key):
+        self.cache_strategy.get(self, key)
+    
+    def evict(self):
+        self.cache_strategy.evict(self)
 
-    def put(self, cache, key, value, size=None):
-        # Store the value with the current timestamp
+class TimeEvictionStrategy(CacheStrategy):
+    DEFAULT_TTL = 15
+
+    def put(self, cache, key, value, ttl = None):
+        ttl = ttl if ttl else TimeEvictionStrategy.DEFAULT_TTL
+        if ttl < 0: raise ValueError("ttl cannot be less than zero")
         timestamp = time.time()
-        cache.store[key] = (value, timestamp)
-        # Remove expired items right after insertion
-        self.evict(cache)
-
+        self.cache.store[key] = (value, timestamp, ttl)
+        cache.store.move_to_end(key)
+    
     def get(self, cache, key):
-        if key not in cache.store:
-            return None
-        value, timestamp = cache.store[key]
-        # Check if the item has expired
-        if time.time() - timestamp > self.ttl_seconds:
-            del cache.store[key]
-            return None
-        return value
+        if key not self.cache.store:
+            print("key not found")
+            return -1
+        value, timestamp, ttl = cache.store[key]
+        current_time = time.time()
 
+        if current_time - timestamp > ttl:
+            del cache.store[key]
+            return -1
+        cache.store.move_to_end(key)
+        return value
+    
     def evict(self, cache):
         current_time = time.time()
-        expired_keys = [
-            key for key, (value, timestamp) in cache.store.items()
-            if current_time - timestamp > self.ttl_seconds
-        ]
+        expired_keys = [key for key, (val, timestamp, ttl) in cache.store.items()
+                        if current_time - timestamp > ttl]
         for key in expired_keys:
             del cache.store[key]
+            print(f"[TimeEviction] Evicted key '{key}' at time {current_time:.2f}")
 
-# Size-based eviction policy
-class SizeBasedEvictionPolicy(EvictionPolicy):
+class SizeEvictionStrategy(CacheStrategy):
     def __init__(self, max_size):
         self.max_size = max_size
-        self.current_size = 0
 
-    def put(self, cache, key, value, size):
-        # Edge case: new item's size exceeds the total allowed cache size.
-        if size > self.max_size:
-            raise ValueError("New item size exceeds cache limitation.")
-        # Add/update the item (store value along with its size)
-        cache.store[key] = (value, size)
-        self.current_size += size
-        # Evict items if needed to maintain the size constraint
-        self.evict(cache)
+    def put(self, cache, key, value, ttl=None):
+        # TTL is ignored in size-based eviction.
+        cache.store[key] = value
+        # Move key to the end as most recently used.
+        cache.store.move_to_end(key)
+        print(f"[SizeEviction] Put key '{key}' with value '{value}'.")
+        if len(cache.store) > self.max_size:
+            self.evict(cache)
 
     def get(self, cache, key):
         if key not in cache.store:
-            return None
-        value, size = cache.store[key]
+            print(f"[SizeEviction] Key '{key}' not found.")
+            return -1
+        # Move key to the end as most recently used.
+        cache.store.move_to_end(key)
+        value = cache.store[key]
+        print(f"[SizeEviction] Key '{key}' accessed, value: {value}.")
         return value
 
-    def total_size(self, cache):
-        # Compute the sum of sizes of all items in the cache.
-        return self.current_size
-
     def evict(self, cache):
-        # Evict items until the total size is within the limit.
-        while self.total_size(cache) > self.max_size:
-            # Remove the oldest inserted item (FIFO eviction) from the OrderedDict.
-            cache.store.popitem(last=False)
+        while len(cache.store) > self.max_size:
+            evicted_key, evicted_value = cache.store.popitem(last=False)
+            print(f"[SizeEviction] Evicted key '{evicted_key}' due to size limit (max_size={self.max_size}).")
 
-# The Cache class (Context)
-class Cache:
-    def __init__(self, eviction_policy: EvictionPolicy):
-        # Using an OrderedDict to facilitate eviction order (e.g., FIFO or LRU)
-        self.store = OrderedDict()
-        self.eviction_policy = eviction_policy
-
-    def put(self, key, value, size=None):
-        """
-        Insert an item into the cache.
-        For time-based policy, 'size' is ignored.
-        For size-based policy, 'size' must be provided.
-        """
-        self.eviction_policy.put(self, key, value, size)
-
-    def get(self, key):
-        """
-        Retrieve an item from the cache.
-        """
-        return self.eviction_policy.get(self, key)
-
-# Example usage:
 if __name__ == "__main__":
-    # --- Using a Time-Based Cache ---
-    print("Time-Based Cache:")
-    time_policy = TimeBasedEvictionPolicy(ttl_seconds=10)  # Short TTL for demo purposes
-    time_cache = Cache(eviction_policy=time_policy)
-    time_cache.put("user1", "data1")
-    print("Fetched:", time_cache.get("user1"))
-    time.sleep(11)  # Wait until the key expires
-    print("After TTL expired, fetched:", time_cache.get("user1"))
+    print("=== Time-Based Eviction Strategy Tests ===")
+    time_strategy = TimeEvictionStrategy()
+    time_cache = Cache(time_strategy)
     
-    # --- Using a Size-Based Cache ---
-    print("\nSize-Based Cache:")
-    size_policy = SizeBasedEvictionPolicy(max_size=100)  # Total allowed size is 100 units
-    size_cache = Cache(eviction_policy=size_policy)
-    size_cache.put("item1", "value1", size=30)
-    size_cache.put("item2", "value2", size=50)
-    print("Total size after 2 inserts:", size_policy.total_size(size_cache))
+    print("\n[Test 1: Immediate Access with default TTL]")
+    time_cache.put("foo", "bar")  # Uses default TTL (15 seconds)
+    print("Get 'foo':", time_cache.get("foo"))
     
-    # This insert is fine: total size becomes 30+50+10 = 90, within limit.
-    size_cache.put("item3", "value3", size=10)
-    print("Total size after 3 inserts:", size_policy.total_size(size_cache))
+    print("\n[Test 2: Immediate Access with custom TTL=2]")
+    time_cache.put("baz", "qux", ttl=2)
+    print("Get 'baz':", time_cache.get("baz"))
     
-    # Insert that causes eviction: new item size 40 would push total to 30+50+10+40 = 130 (>100)
-    try:
-        size_cache.put("item4", "value4", size=40)
-    except ValueError as e:
-        print("Error:", e)
-    # Instead, if the new item is valid (i.e. its size <= max_size) the policy evicts older items:
-    size_cache.put("item4", "value4", size=20)
-    print("Total size after item4 insert:", size_policy.total_size(size_cache))
-    print("Cache content:", list(size_cache.store.keys()))
+    print("\n[Test 3: Access After Expiry]")
+    time.sleep(3)
+    print("Get 'baz' after expiry:", time_cache.get("baz"))
+    
+    print("\n[Test 4: Manual Eviction]")
+    time_cache.put("alpha", 100, ttl=1)
+    time_cache.put("beta", 200, ttl=5)
+    time.sleep(2)
+    print("Get 'alpha':", time_cache.get("alpha"))
+    print("Get 'beta':", time_cache.get("beta"))
+    time_cache.evict()
+    print("Current keys after eviction (TimeEviction):", list(time_cache.store.keys()))
+    
+    print("\n=== Size-Based Eviction Strategy Tests ===")
+    size_strategy = SizeEvictionStrategy(max_size=3)
+    size_cache = Cache(size_strategy)
+    
+    print("\n[Test 5: Size Limit Eviction]")
+    size_cache.put("one", 1)
+    size_cache.put("two", 2)
+    size_cache.put("three", 3)
+    print("Current keys:", list(size_cache.store.keys()))
+    
+    # Inserting one more item should trigger eviction of the oldest entry.
+    size_cache.put("four", 4)
+    print("After adding 'four', current keys:", list(size_cache.store.keys()))
+    
+    print("\n[Test 6: Accessing Existing Key]")
+    print("Get 'two':", size_cache.get("two"))
